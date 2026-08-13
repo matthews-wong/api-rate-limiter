@@ -7,6 +7,7 @@ state, and hands back a :class:`RateLimitResult`.
 
 from __future__ import annotations
 
+import threading
 from typing import Protocol
 
 from ratelimiter.backend import Backend, InMemoryBackend
@@ -27,12 +28,25 @@ class RateLimiter:
     def __init__(self, algorithm: Algorithm, backend: Backend | None = None) -> None:
         self.algorithm = algorithm
         self.backend: Backend = backend or InMemoryBackend()
+        # The get -> compute -> set cycle below must be atomic: a thread-safe
+        # backend only makes each individual call atomic, not the sequence.
+        # Without this lock, concurrent checks for the same key all read the
+        # same state and each decide "allowed", admitting far past the limit.
+        self._lock = threading.Lock()
 
     def check(self, key: str, cost: int = 1) -> RateLimitResult:
-        """Evaluate one request for ``key`` and record the resulting state."""
-        state = self.backend.get(key)
-        if state is None:
-            state = self.algorithm.initial_state()
-        new_state, result = self.algorithm.check(state, cost)
-        self.backend.set(key, new_state)
+        """Evaluate one request for ``key`` and record the resulting state.
+
+        The read-modify-write is serialized so concurrent callers (e.g. a
+        threaded ASGI server, or FastAPI running sync routes in a threadpool)
+        cannot over-admit. This guards the in-process path only; a distributed
+        backend must enforce the same atomicity server-side (see
+        :class:`~ratelimiter.backend.RedisBackend`).
+        """
+        with self._lock:
+            state = self.backend.get(key)
+            if state is None:
+                state = self.algorithm.initial_state()
+            new_state, result = self.algorithm.check(state, cost)
+            self.backend.set(key, new_state)
         return result

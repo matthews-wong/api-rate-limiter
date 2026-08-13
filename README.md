@@ -151,6 +151,7 @@ api-rate-limiter/
 ├── tests/
 │   ├── conftest.py         # FakeClock fixture (no real sleeps)
 │   ├── test_algorithms.py  # refill-over-time + window counting
+│   ├── test_concurrency.py # concurrent same-key checks never over-admit
 │   └── test_fastapi.py     # TestClient: 200s then 429
 ├── .github/workflows/ci.yml
 ├── pyproject.toml
@@ -168,7 +169,9 @@ pytest
 Time is injected through a `FakeClock`, so tests advance the clock explicitly
 (`clock.advance(2.0)`) instead of sleeping. The suite covers token-bucket refill
 over time, sliding-window counting and expiry, header/`Retry-After` math, and a
-FastAPI `TestClient` flow that returns `200`s up to the limit and `429`s past it.
+FastAPI `TestClient` flow that returns `200`s up to the limit and `429`s past it,
+plus a concurrency suite asserting that many threads hitting the same key never
+admit more than the configured limit.
 
 ## Roadmap
 

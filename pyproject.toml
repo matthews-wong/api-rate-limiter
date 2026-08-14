@@ -19,7 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "fastapi>=0.110",
-    "starlette>=0.36",
+    "starlette>=1.6.0",
 ]
 
 [project.optional-dependencies]
